@@ -1,6 +1,6 @@
 # 网易云音乐下载器 · Android 版
 
-当前 APK：[`../dist/网易云音乐下载器-Android-v1.1.0.apk`](https://github.com/wangchuanao2008/netease-music-downloader/releases/download/v1.1.0/%E7%BD%91%E6%98%93%E4%BA%91%E9%9F%B3%E4%B9%90%E4%B8%8B%E8%BD%BD%E5%99%A8-Android-v1.1.0.apk)，包名 `com.musicdown.netease`，`versionCode 3`，最低 Android 8.0（API 26），目标 Android 15（API 35）。应用只申请联网权限；保存通过 Android 系统文件夹选择器完成。
+当前 APK：[`../dist/网易云音乐下载器-Android-v1.1.0.apk`](https://github.com/wangchuanao2008/netease-music-downloader/releases/download/v1.1.0/netease-music-downloader-android-v1.1.0.apk)，包名 `com.musicdown.netease`，`versionCode 3`，最低 Android 8.0（API 26），目标 Android 15（API 35）。应用只申请联网权限；保存通过 Android 系统文件夹选择器完成。
 
 ## 使用方式
 

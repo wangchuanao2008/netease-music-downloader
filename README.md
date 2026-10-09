@@ -65,6 +65,6 @@ brew install ffmpeg
 
 在 Apple Silicon Mac 上运行 `zsh build_mac.sh`，输出 `dist/音乐下载器.app`。本机另提供可复制的 `dist/音乐下载器-macOS-arm64.zip`；要自行生成压缩包，可运行 `ditto -c -k --sequesterRsrc --keepParent 'dist/音乐下载器.app' 'dist/音乐下载器-macOS-arm64.zip'`。PyInstaller 打包用依赖会自动安装。脚本会修复 Qt WebEngine 在 PyInstaller 中的 framework 资源布局、给辅助进程补上 Qt 所需签名权限，并验证包的签名；启动入口会在 macOS 上使用 Qt 的 OpenGL 渲染后端，避开当前构建环境中的 Metal 着色器闪退。生成的是 arm64 应用，仅有本地临时签名，未使用开发者证书签名或 Apple 公证；分发到其他 Mac 需要开发者签名与公证。本地如被 Gatekeeper 阻止，可在系统设置的“隐私与安全性”中批准。
 
-Windows 安装版已生成单文件 [网易云音乐下载器-安装程序-Windows-x64.exe](https://github.com/wangchuanao2008/netease-music-downloader/releases/download/v1.1.0/%E7%BD%91%E6%98%93%E4%BA%91%E9%9F%B3%E4%B9%90%E4%B8%8B%E8%BD%BD%E5%99%A8-%E5%AE%89%E8%A3%85%E7%A8%8B%E5%BA%8F-Windows-x64.exe)。构建步骤、限制和验证记录见 [windows/README.md](windows/README.md)。
+Windows 安装版已生成单文件 [网易云音乐下载器-安装程序-Windows-x64.exe](https://github.com/wangchuanao2008/netease-music-downloader/releases/download/v1.1.0/netease-music-downloader-windows-x64-setup.exe)。构建步骤、限制和验证记录见 [windows/README.md](windows/README.md)。
 
-Android 版源码位于 [android/](android/)，当前 APK 为 [网易云音乐下载器-Android-v1.1.0.apk](https://github.com/wangchuanao2008/netease-music-downloader/releases/download/v1.1.0/%E7%BD%91%E6%98%93%E4%BA%91%E9%9F%B3%E4%B9%90%E4%B8%8B%E8%BD%BD%E5%99%A8-Android-v1.1.0.apk)。本版先解析歌曲和音质目录，用户选定音质并点击下载后才开始传输。使用方式、构建步骤、签名和设备验收记录见 [android/README.md](android/README.md)。
+Android 版源码位于 [android/](android/)，当前 APK 为 [网易云音乐下载器-Android-v1.1.0.apk](https://github.com/wangchuanao2008/netease-music-downloader/releases/download/v1.1.0/netease-music-downloader-android-v1.1.0.apk)。本版先解析歌曲和音质目录，用户选定音质并点击下载后才开始传输。使用方式、构建步骤、签名和设备验收记录见 [android/README.md](android/README.md)。

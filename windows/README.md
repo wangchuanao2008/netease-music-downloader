@@ -1,6 +1,6 @@
 # 网易云音乐下载器 · Windows 版
 
-可直接安装的单文件程序位于 [`../dist/网易云音乐下载器-安装程序-Windows-x64.exe`](https://github.com/wangchuanao2008/netease-music-downloader/releases/download/v1.1.0/%E7%BD%91%E6%98%93%E4%BA%91%E9%9F%B3%E4%B9%90%E4%B8%8B%E8%BD%BD%E5%99%A8-%E5%AE%89%E8%A3%85%E7%A8%8B%E5%BA%8F-Windows-x64.exe)。双击后按向导安装；安装完成后从开始菜单启动，首次使用时选择保存目录。安装器为当前用户安装，无需管理员权限，也不要求另装 Python。可选创建桌面快捷方式，之后可在 Windows“已安装的应用”中卸载。
+可直接安装的单文件程序位于 [`../dist/网易云音乐下载器-安装程序-Windows-x64.exe`](https://github.com/wangchuanao2008/netease-music-downloader/releases/download/v1.1.0/netease-music-downloader-windows-x64-setup.exe)。双击后按向导安装；安装完成后从开始菜单启动，首次使用时选择保存目录。安装器为当前用户安装，无需管理员权限，也不要求另装 Python。可选创建桌面快捷方式，之后可在 Windows“已安装的应用”中卸载。
 
 此文件夹包含可独立复制到 Windows 的完整源码。支持网易云单曲完整链接、`163cn.tv` 分享短链、整段分享文字和一次粘贴多个单曲链接。程序自动排队下载，可选 GD Studio 同一网易云歌曲 ID 的备用来源。QQ 音乐、歌名搜索、歌单和专辑不在本版范围内。
 
