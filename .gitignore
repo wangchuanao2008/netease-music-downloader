@@ -1,0 +1,13 @@
+.venv/
+build/
+dist/
+*.spec
+!音乐下载器.spec
+__pycache__/
+*.pyc
+validation-output/
+.DS_Store
+.env
+.env.*
+*.jks
+*.keystore
