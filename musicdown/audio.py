@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -29,18 +30,32 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _find_tool(name: str) -> str | None:
+    filename = name + (".exe" if sys.platform == "win32" else "")
+    roots = [Path(sys.executable).resolve().parent, Path(__file__).resolve().parents[1]]
+    if getattr(sys, "frozen", False):
+        roots.insert(0, Path(getattr(sys, "_MEIPASS", roots[0])))
+    if sys.platform == "darwin":
+        roots.extend([Path("/opt/homebrew/bin"), Path("/usr/local/bin")])
+    return next((str(root / filename) for root in roots if (root / filename).is_file()), None) or shutil.which(name)
+
+
 def find_ffmpeg() -> str | None:
-    return shutil.which("ffmpeg") or next((p for p in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg") if Path(p).is_file()), None)
+    return _find_tool("ffmpeg")
 
 
 def find_ffprobe() -> str | None:
-    return shutil.which("ffprobe") or next((p for p in ("/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe") if Path(p).is_file()), None)
+    return _find_tool("ffprobe")
+
+
+def _tool_help() -> str:
+    return "请安装 FFmpeg，或将 ffmpeg.exe 和 ffprobe.exe 放在应用旁边" if sys.platform == "win32" else "请运行 brew install ffmpeg"
 
 
 def _inspect_with_ffprobe(path: Path) -> dict:
     ffprobe = find_ffprobe()
     if not ffprobe:
-        raise DownloadError("该音频编码需要 ffprobe 检测；请运行 brew install ffmpeg")
+        raise DownloadError(f"该音频编码需要 ffprobe 检测；{_tool_help()}")
     result = subprocess.run([ffprobe, "-v", "error", "-show_streams", "-show_format",
                              "-of", "json", str(path)], capture_output=True, text=True, timeout=20)
     if result.returncode:
@@ -238,11 +253,12 @@ def download_audio(song: Song, sources, target_dir: Path, mp3: bool, client: htt
                 raise DownloadError("当前 FFmpeg 无法解码 AVS3 Audio Vivid，不能转换为 MP3；请关闭 MP3 转换后保留原始文件")
             ffmpeg = find_ffmpeg()
             if not ffmpeg:
-                raise DownloadError("转换 MP3 需要 ffmpeg；请运行 brew install ffmpeg")
+                raise DownloadError(f"转换 MP3 需要 ffmpeg；{_tool_help()}")
             status("转换 MP3 中")
             converted = temp_path.with_suffix(".mp3.part")
+            channel_options = ["-ac", "2"] if details.get("channels", 0) > 2 else []
             proc = subprocess.Popen([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(temp_path),
-                                     "-vn", "-codec:a", "libmp3lame", "-q:a", "2", "-f", "mp3", str(converted)],
+                                     "-vn", "-codec:a", "libmp3lame", "-q:a", "2", *channel_options, "-f", "mp3", str(converted)],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             while proc.poll() is None:
                 if cancelled.wait(0.2):

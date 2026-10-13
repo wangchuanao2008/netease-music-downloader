@@ -5,7 +5,7 @@ a = Analysis(
     ['run.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('VERSION', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -47,4 +47,7 @@ app = BUNDLE(
     name='音乐下载器.app',
     icon=None,
     bundle_identifier='io.github.musicdown.desktop',
+    version=open('VERSION', encoding='utf-8').read().strip(),
+    info_plist={'CFBundleShortVersionString': open('VERSION', encoding='utf-8').read().strip(),
+                'CFBundleVersion': open('VERSION', encoding='utf-8').read().strip()},
 )

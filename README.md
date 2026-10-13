@@ -1,10 +1,12 @@
-# 网易云音乐下载器（macOS / Apple Silicon）
+# 网易云音乐下载器（macOS / Windows / Android）
+
+当前统一版本：**1.2.1**。根目录 `VERSION` 驱动三端版本、macOS 应用元数据、Windows EXE 与安装器版本、Android versionName/versionCode 和发布文件名。macOS 与 Windows 共用 `musicdown/` 桌面实现；Android 使用对应的原生界面。
 
 粘贴网易云音乐的单曲分享链接或整段分享文字，程序先提取链接、读取歌曲信息和该曲的音质目录。选择歌曲及音质并点击“下载所选歌曲”后，才会请求并保存完整音频。一次可以粘贴多个单曲链接，并为每首歌分别选择音质；选好后也可点击“下载全部已选音质”。此版本仅支持网易云音乐，不提供歌名搜索或 QQ 音乐解析。
 
 ## 下载
 
-现成的 macOS Apple Silicon 应用、Windows x64 安装程序和 Android APK 可在 [GitHub Releases](https://github.com/wangchuanao2008/netease-music-downloader/releases/latest) 下载。各平台功能与验证情况见下文及对应平台说明。
+历史发布的 macOS Apple Silicon 应用、Windows x64 安装程序和 Android APK 可在 [GitHub Releases](https://github.com/wangchuanao2008/netease-music-downloader/releases/latest) 下载。1.2.1 的最新安装包由本仓库构建至 `dist/`，源码提交不等于 Release 附件已上传。各平台功能与验证情况见下文及对应平台说明。
 
 ## 启动
 
@@ -17,7 +19,7 @@ python3 -m venv .venv
 .venv/bin/python -m musicdown
 ```
 
-首次启动时选择保存目录。之后可点击“官网登录”，在应用内打开的网易云官网点击“用户登录”，用网易云音乐 App 扫码并完成网易云要求的安全验证；验证后的登录会话仅保存在 macOS 钥匙串中，可在软件内退出。粘贴链接约 0.65 秒后开始后台解析，不会自动下载。点击已解析的歌曲行后，音质菜单会启用该曲目录中有记录的标准、较高、极高、无损、Hi-Res、超清母带、高清臻音、沉浸环绕声、臻音全景声和杜比全景声等档位，其他档位不可选；各档位标注通常所需的会员等级。必须再选择音质并点击下载按钮。空间音频是不同混音，不参与“自动最高可用”的普通音质排序。选定具体音质时，如果网易云实际降级或只返回试听，任务会失败并显示原因；“自动”会优先取账号可用的最高普通音质。下载列表显示歌曲、歌手、封面、该曲目录列出的音质类别、实际音质、进度和状态；可取消、失败重试、在 Finder 中显示文件。目录档位不等于账号有权限下载，实际成功与音质以保存文件校验为准。默认保留源音频格式。转换为 MP3 需安装 FFmpeg：
+首次启动时选择保存目录。之后可点击“官网登录”，直接进入应用内的网易云官方登录页，用网易云音乐 App 扫码并完成网易云要求的安全验证；验证后的登录会话仅保存在 macOS 钥匙串或 Windows 凭据管理器中，可在软件内退出。粘贴链接约 0.65 秒后开始后台解析，不会自动下载。点击已解析的歌曲行后，音质菜单会启用该曲目录中有记录的标准、较高、极高、无损、Hi-Res、超清母带、高清臻音、沉浸环绕声、臻音全景声和杜比全景声等档位，其他官方档位不可选；各档位标注通常所需的会员等级。“备用音源（GD Studio）”与音质选项并列，可直接选择，下载后显示实际编码和音质；它不代表某种固定音质。必须再选择音质并点击下载按钮。空间音频是不同混音，不参与“自动最高可用”的普通音质排序。选定具体音质时，如果网易云实际降级或只返回试听，任务会失败并显示原因；“自动”会优先取账号可用的最高普通音质。下载列表显示歌曲、歌手、封面、该曲目录列出的音质类别、实际音质、进度和状态；可取消、失败重试、在 Finder 中显示文件。目录档位不等于账号有权限下载，实际成功与音质以保存文件校验为准。默认保留源音频格式。转换为 MP3 需安装 FFmpeg：
 
 ```sh
 brew install ffmpeg
@@ -28,16 +30,16 @@ brew install ffmpeg
 ## 支持的链接与来源
 
 - 网易云单曲链接：`music.163.com/song?id=...`、`music.163.com/#/song?id=...`、`y.music.163.com/m/song?id=...`，以及跳转到这些地址的 `163cn.tv` 分享短链。歌单和专辑链接不在本版范围内。
-- 歌曲信息来自 `music.163.com/api/song/detail/`。音频优先通过网易云的 `interface3.music.163.com/eapi/song/enhance/player/url/v1` 按所选音质请求，登录后携带账号会话。自动音质失败时再尝试 `music.163.com/song/media/outer/url` 公开音频；仍失败且勾选备用来源时，通过 GD Studio 查询同一个网易云歌曲 ID。具体音质选项只使用网易云音质接口，不静默改用低音质或第三方。只接受网易云音频 CDN `*.music.126.net` 的音质接口地址。
+- 歌曲信息来自 `music.163.com/api/song/detail/`。音频优先通过网易云的 `interface3.music.163.com/eapi/song/enhance/player/url/v1` 按所选音质请求，登录后携带账号会话。自动音质失败时再尝试 `music.163.com/song/media/outer/url` 公开音频；公开音源也失败时显示原因，可手动选择“备用音源”重试。单独选择“备用音源”时直接通过 GD Studio 查询同一个网易云歌曲 ID，不先请求网易云账号音质。具体音质选项只使用网易云音质接口，不静默改用低音质或第三方。只接受网易云音频 CDN `*.music.126.net` 的音质接口地址。
 - 单曲目录音质来自 `music.163.com/api/song/music/detail/get?songId=...` 的 `l/m/h/sq/hr/jm/je/sk/sks/vi/db` 字段；字段缺失或为空时相应档位不可选。目录查询失败会显示解析失败，可重试解析。这个目录是平台提供的档位信息，不表示会员权限、当前设备支持或可导出完整音频。会员标注为通常要求：标准/较高/极高的音质功能本身无需会员，会员歌曲仍可能需要付费权益；无损/Hi-Res/高清臻音通常需要 VIP；超清母带/沉浸环绕声/杜比全景声/臻音全景声通常需要 SVIP。具体以网易云实时授权为准。
 - 保存前检测文件格式和时长；只有可解析、时长与歌曲信息相符的音频才标为成功。界面上的编码、码率和无损状态来自保存后的文件检测，不依赖接口标称音质。文件名默认“歌手 - 歌曲名”，尽可能写入歌曲名、歌手、专辑和封面。
 
-原平台音质接口调用方法参考 [yt-dlp 的网易云提取器](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/extractor/neteasemusic.py) 与 [NeteaseCloudMusicApiEnhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced)；单曲目录接口参考该项目的 [song_music_detail 模块](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced/blob/main/module/song_music_detail.js)。会员等级标注参考 [荣耀与网易云互通音乐服务的会员权益说明](https://www.honor.com/cn/support/content/zh-cn15851976/)和[音质权益说明](https://www.honor.com/cn/support/content/zh-cn15851939/)，其中部分细分档位是根据相近权益推定，界面统一标为“通常要求”，不能替代网易云实时的歌曲授权判断。旧版自绘二维码实际扫码后被网易云拒绝；后续网页版二维码又要求额外安全验证，因此改为内嵌 `https://music.163.com/` 官方网页，让用户直接完成网页登录和验证，应用只读取该站设置的登录会话。网易云没有为本软件提供稳定的公开下载 API；接口可能变化。备用来源由 [GD Studio](https://music.gdstudio.xyz/) 提供，接口可用性和上游取得音频的授权或凭据情况无法由本程序核实。
+原平台音质接口调用方法参考 [yt-dlp 的网易云提取器](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/extractor/neteasemusic.py) 与 [NeteaseCloudMusicApiEnhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced)；单曲目录接口参考该项目的 [song_music_detail 模块](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced/blob/main/module/song_music_detail.js)。会员等级标注参考 [荣耀与网易云互通音乐服务的会员权益说明](https://www.honor.com/cn/support/content/zh-cn15851976/)和[音质权益说明](https://www.honor.com/cn/support/content/zh-cn15851939/)，其中部分细分档位是根据相近权益推定，界面统一标为“通常要求”，不能替代网易云实时的歌曲授权判断。旧版自绘二维码实际扫码后被网易云拒绝；后续网页版二维码又要求额外安全验证，因此使用内嵌官方登录页面 `https://music.163.com/#/login`，让用户直接完成网页登录和验证，应用只读取该站设置的登录会话。网易云没有为本软件提供稳定的公开下载 API；接口可能变化。备用来源由 [GD Studio](https://music.gdstudio.xyz/) 提供，接口可用性和上游取得音频的授权或凭据情况无法由本程序核实。
 
 ## 已知限制
 
 - 仅支持网易云音乐单曲分享链接；QQ 音乐及其他平台链接会显示“不支持”。没有歌名或歌手搜索框。
-- 会员音质需要用户自己的账号具备对应权益；扫码登录不要求在本软件中输入密码。登录凭据只存在本机钥匙串，不发送给 GD Studio。第三方备用接口可能停用、限流，或只提供部分歌曲；不保证每首会员曲均可取得完整文件。
+- 会员音质需要用户自己的账号具备对应权益；扫码登录不要求在本软件中输入密码。桌面登录凭据只存在本机系统凭据存储，不发送给 GD Studio。第三方备用接口可能停用、限流，或只提供部分歌曲；不保证每首会员曲均可取得完整文件。
 - 十个选项表示尝试向网易云请求对应档位，不表示每首歌都提供十种文件。超清母带等普通档位按接口返回的实际等级和文件无损属性核对；空间音频需单独选择。杜比请求还会检查文件是否为 AC-3/E-AC-3，但仅凭编码无法证明文件带有 Atmos 元数据，因此杜比全景声档位尚需真实文件验收。臻音全景声在已测试歌曲上返回 `av3a`（AVS3 Audio Vivid）编码：程序可以原样保存 `.m4a`，核对容器、时长和全部音频包，并标为“已保存（未验证解码）”。本机标准版 FFmpeg 8.1.2 没有该音频解码器，因此无法保证 macOS 普通播放器可以播放，也不能把这一档转换为 MP3。转换其他音质为 MP3 后音频为有损格式，空间音效和母带属性不能保留。
 - 用户提供的 SVIP 账号已实测超清母带、无损、Hi-Res、高清臻音和沉浸环绕声的完整保存流程；其余档位是否能用于某首歌仍取决于平台实际返回。账号即使可播放，也可能因版权、地区、单曲购买或平台导出限制而无法取得完整可保存音频。
 - 下载文件若明显短于歌曲详情时长，会标为试听片段并删除临时文件。歌曲详情时长有误时可能误判。
@@ -63,8 +65,23 @@ brew install ffmpeg
 
 ## 打包
 
-在 Apple Silicon Mac 上运行 `zsh build_mac.sh`，输出 `dist/音乐下载器.app`。本机另提供可复制的 `dist/音乐下载器-macOS-arm64.zip`；要自行生成压缩包，可运行 `ditto -c -k --sequesterRsrc --keepParent 'dist/音乐下载器.app' 'dist/音乐下载器-macOS-arm64.zip'`。PyInstaller 打包用依赖会自动安装。脚本会修复 Qt WebEngine 在 PyInstaller 中的 framework 资源布局、给辅助进程补上 Qt 所需签名权限，并验证包的签名；启动入口会在 macOS 上使用 Qt 的 OpenGL 渲染后端，避开当前构建环境中的 Metal 着色器闪退。生成的是 arm64 应用，仅有本地临时签名，未使用开发者证书签名或 Apple 公证；分发到其他 Mac 需要开发者签名与公证。本地如被 Gatekeeper 阻止，可在系统设置的“隐私与安全性”中批准。
+在 Apple Silicon Mac 上运行 `zsh build_mac.sh`，输出 `dist/音乐下载器.app` 和 `dist/netease-music-downloader-macos-arm64-v1.2.1.zip`。脚本修复 Qt WebEngine 资源布局、签名并验证应用；当前使用临时签名，未做 Apple 公证。Windows 运行 `windows/build_windows.ps1`，Android 运行 `android/build_android.sh`，产物名自动使用 `VERSION`。详见 [Windows 说明](windows/README.md)和 [Android 说明](android/README.md)。
 
-Windows 安装版已生成单文件 [网易云音乐下载器-安装程序-Windows-x64.exe](https://github.com/wangchuanao2008/netease-music-downloader/releases/download/v1.1.0/netease-music-downloader-windows-x64-setup.exe)。构建步骤、限制和验证记录见 [windows/README.md](windows/README.md)。
+## 1.2.1 三端功能
 
-Android 版源码位于 [android/](android/)，当前 APK 为 [网易云音乐下载器-Android-v1.1.0.apk](https://github.com/wangchuanao2008/netease-music-downloader/releases/download/v1.1.0/netease-music-downloader-android-v1.1.0.apk)。本版先解析歌曲和音质目录，用户选定音质并点击下载后才开始传输。使用方式、构建步骤、签名和设备验收记录见 [android/README.md](android/README.md)。
+| 功能 | macOS | Windows | Android |
+| --- | --- | --- | --- |
+| 多链接解析、封面与歌曲音质目录 | 支持 | 支持 | 支持 |
+| 先选音质再下载、批量下载、取消/重试 | 支持 | 支持 | 支持 |
+| 官方网页扫码登录、会员音质请求 | 支持 | 支持 | 支持 |
+| 明确音质降级拒绝、试听/截断校验、独立备用来源 | 支持 | 支持 | 支持 |
+| 源格式、MP3 转换、歌曲/专辑/封面标签 | 支持 | 支持 | 支持 |
+| E-AC-3/AC-3 检测、AV3A 容器及完整包校验 | 需 FFprobe | 需 FFprobe | 内置 FFprobe |
+| 登录会话存储 | 钥匙串 | 凭据管理器 | Keystore 加密 |
+| 保存和打开文件 | Finder | 资源管理器 | 系统目录选择器/播放器 |
+
+桌面需安装 FFmpeg/FFprobe 以转换和检测特殊编码；Android 内置对应音频库。三端都不能解码 AV3A，只能保留原文件并标注“未验证解码”，也不能将它转换为 MP3。杜比编码检查不等于已验证 Atmos 元数据。Android 任务在应用进程内运行，进程被系统结束后需要重试。登录、会员和实际音质仍受网易云权限与接口返回限制。
+
+1.2.1 三端实现同一功能清单：粘贴只解析、确认后下载、批量任务、官方登录入口、独立备用来源、音质校验与音频处理。Android 按系统状态栏、刘海和键盘的实际 inset 调整布局，登录页使用窄屏适配。
+
+历史真实歌曲验证记录见上文。本次只进行 macOS 验收，Windows、Android 仅重新构建安装包，按用户要求跳过验收和 Android 原生设备测试。构建与验证记录见 [发布记录](docs/release-1.2.1.md)；功能实现一致不表示三端运行结果均已验收。

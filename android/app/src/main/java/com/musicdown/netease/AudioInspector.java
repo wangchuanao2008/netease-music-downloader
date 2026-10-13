@@ -1,106 +1,91 @@
 package com.musicdown.netease;
 
-import static com.musicdown.netease.Models.AppException;
-import static com.musicdown.netease.Models.AudioInfo;
-
-import android.media.MediaMetadataRetriever;
-import android.media.MediaExtractor;
-import android.media.MediaFormat;
-
+import org.json.JSONArray;
+import org.json.JSONObject;
 import java.io.File;
-import java.io.FileInputStream;
 import java.util.Locale;
 
+/** Uses the same FFprobe checks as the desktop application, including Audio Vivid packet counts. */
 final class AudioInspector {
     private AudioInspector() {}
 
-    static AudioInfo inspect(File file) throws AppException {
-        byte[] head = new byte[16];
-        try (FileInputStream input = new FileInputStream(file)) {
-            if (input.read(head) < 4) throw new AppException("下载内容不是有效音频文件");
-        } catch (AppException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new AppException("读取音频文件失败：" + e.getMessage(), e);
-        }
+    static Models.AudioInfo inspect(File file) throws Models.AppException {
+        return inspect(file, new Models.Control());
+    }
 
-        String extension;
-        String codec;
-        boolean lossless;
-        if (head[0] == 'f' && head[1] == 'L' && head[2] == 'a' && head[3] == 'C') {
-            extension = "flac"; codec = "FLAC"; lossless = true;
-        } else if (head.length >= 8 && head[4] == 'f' && head[5] == 't' && head[6] == 'y' && head[7] == 'p') {
-            extension = "m4a"; codec = "AAC/ALAC"; lossless = false;
-        } else if ((head[0] == 'I' && head[1] == 'D' && head[2] == '3') ||
-                ((head[0] & 0xff) == 0xff && ((head[1] & 0xe0) == 0xe0))) {
-            extension = "mp3"; codec = "MP3"; lossless = false;
-        } else {
-            throw new AppException("服务器返回的内容不是支持的 MP3、M4A 或 FLAC 音频");
-        }
-
-        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+    static Models.AudioInfo inspect(File file, Models.Control control) throws Models.AppException {
         try {
-            retriever.setDataSource(file.getAbsolutePath());
-            double duration = parseLong(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)) / 1000.0;
-            int bitrate = (int) (parseLong(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)) / 1000);
-            TrackMetadata track = trackMetadata(file);
-            String mime = track.mime;
-            if (mime == null || mime.isEmpty()) throw new AppException("Android 无法识别该音频实际编码，不能标记为验证成功");
-            String normalizedMime = mime.toLowerCase(Locale.ROOT);
-            if ("flac".equals(extension) && !normalizedMime.contains("flac"))
-                throw new AppException("文件扩展名为 FLAC，但实际音轨编码不匹配");
-            if ("mp3".equals(extension) && !(normalizedMime.contains("mpeg") || normalizedMime.contains("mp3")))
-                throw new AppException("文件扩展名为 MP3，但实际音轨编码不匹配");
-            if ("m4a".equals(extension) && !(normalizedMime.contains("mp4a") || normalizedMime.contains("aac") || normalizedMime.contains("alac")))
-                throw new AppException("Android 无法验证此 M4A 特殊编码，未标记为成功（" + mime + "）");
-            if (bitrate <= 0 && track.bitrate > 0) bitrate = track.bitrate / 1000;
-            if (duration <= 0) throw new AppException("音频文件没有有效时长，未保存");
-            if (bitrate <= 0) bitrate = (int) Math.round(file.length() * 8.0 / duration / 1000.0);
-            if ("m4a".equals(extension) && mime != null && mime.toLowerCase(Locale.ROOT).contains("alac")) {
-                codec = "ALAC"; lossless = true;
-            } else if ("m4a".equals(extension) && mime != null &&
-                    (mime.toLowerCase(Locale.ROOT).contains("mp4a") || mime.toLowerCase(Locale.ROOT).contains("aac"))) {
-                codec = "AAC";
-            } else if ("m4a".equals(extension)) {
-                throw new AppException("Android 无法可靠判断 M4A 编码，未标记为成功");
+            String output = NativeAudio.probe(new String[]{"-v", "error", "-show_streams", "-show_format",
+                    "-of", "json", file.getAbsolutePath()}, control);
+            JSONObject data = probeJson(output);
+            JSONArray streams = data.optJSONArray("streams");
+            JSONObject audio = null;
+            if (streams != null) for (int i = 0; i < streams.length(); i++) {
+                JSONObject stream = streams.getJSONObject(i);
+                String type = stream.optString("codec_type");
+                if ("audio".equals(type) && audio == null) audio = stream;
+                JSONObject disposition = stream.optJSONObject("disposition");
+                if ("video".equals(type) && (disposition == null || disposition.optInt("attached_pic") != 1))
+                    throw new Models.AppException("服务器返回的内容不是纯音频文件");
             }
-            return new AudioInfo(extension, codec, lossless, bitrate, duration);
-        } catch (AppException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new AppException("音频文件无法解码：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()), e);
-        } finally {
-            try { retriever.release(); } catch (Exception ignored) {}
-        }
-    }
-
-    private static long parseLong(String value) {
-        try { return value == null ? 0 : Long.parseLong(value); }
-        catch (NumberFormatException ignored) { return 0; }
-    }
-
-    private static TrackMetadata trackMetadata(File file) {
-        MediaExtractor extractor = new MediaExtractor();
-        try {
-            extractor.setDataSource(file.getAbsolutePath());
-            for (int i = 0; i < extractor.getTrackCount(); i++) {
-                MediaFormat format = extractor.getTrackFormat(i);
-                String mime = format.getString(MediaFormat.KEY_MIME);
-                if (mime != null && mime.startsWith("audio/")) {
-                    int bitrate = format.containsKey(MediaFormat.KEY_BIT_RATE) ? format.getInteger(MediaFormat.KEY_BIT_RATE) : 0;
-                    return new TrackMetadata(mime, bitrate);
+            if (audio == null) throw new Models.AppException("文件没有有效音轨");
+            JSONObject format = data.optJSONObject("format");
+            String container = format == null ? "" : format.optString("format_name");
+            String rawCodec = audio.optString("codec_name").toLowerCase(Locale.ROOT);
+            String tag = audio.optString("codec_tag_string").toLowerCase(Locale.ROOT);
+            boolean vivid = "av3a".equals(tag) && (container.contains("mp4") || container.contains("mov"));
+            String codec, extension;
+            boolean lossless = false;
+            if (vivid) {
+                String counted = NativeAudio.probe(new String[]{"-v", "error", "-count_packets", "-show_entries",
+                        "stream=index,nb_frames,nb_read_packets", "-of", "json", file.getAbsolutePath()}, control);
+                if (counted.toLowerCase(Locale.ROOT).contains("partial file"))
+                    throw new Models.AppException("臻音全景声音频包不完整，未保存");
+                JSONArray packets = probeJson(counted).getJSONArray("streams");
+                long expected = 0, actual = 0;
+                for (int i = 0; i < packets.length(); i++) {
+                    JSONObject stream = packets.getJSONObject(i);
+                    if (stream.optInt("index", -1) == audio.optInt("index", -2)) {
+                        expected = number(stream.optString("nb_frames")); actual = number(stream.optString("nb_read_packets"));
+                    }
                 }
+                if (expected <= 0 || expected != actual || counted.toLowerCase(Locale.ROOT).contains("partial file"))
+                    throw new Models.AppException("臻音全景声音频包不完整，未保存");
+                codec = "AVS3 Audio Vivid (av3a)"; extension = "m4a";
+            } else {
+                switch (rawCodec) {
+                    case "mp3": codec = "MP3"; extension = "mp3"; break;
+                    case "flac": codec = "FLAC"; extension = "flac"; lossless = true; break;
+                    case "alac": codec = "ALAC"; extension = "m4a"; lossless = true; break;
+                    case "aac": codec = "AAC"; extension = "aac"; break;
+                    case "ac3": codec = "AC-3"; extension = "ac3"; break;
+                    case "eac3": codec = "E-AC-3"; extension = "eac3"; break;
+                    case "opus": codec = "Opus"; extension = "ogg"; break;
+                    case "vorbis": codec = "Vorbis"; extension = "ogg"; break;
+                    default: throw new Models.AppException("暂不支持检测此音频编码：" + rawCodec);
+                }
+                if (container.contains("mp4") || container.contains("mov")) extension = "m4a";
             }
-        } catch (Exception ignored) {
-        } finally {
-            try { extractor.release(); } catch (Exception ignored) {}
-        }
-        return new TrackMetadata("", 0);
+            double duration = decimal(audio.optString("duration"));
+            if (duration <= 0 && format != null) duration = decimal(format.optString("duration"));
+            if (duration <= 0) throw new Models.AppException("音频文件没有有效时长");
+            long bitrate = number(audio.optString("bit_rate"));
+            if (bitrate <= 0 && format != null) bitrate = number(format.optString("bit_rate"));
+            int depth = (int)number(audio.optString("bits_per_raw_sample"));
+            if (depth <= 0) depth = (int)number(audio.optString("bits_per_sample"));
+            return new Models.AudioInfo(extension, codec, lossless, (int)Math.round(bitrate / 1000.0), duration,
+                    (int)number(audio.optString("sample_rate")), lossless ? depth : 0,
+                    audio.optInt("channels"), !vivid);
+        } catch (Models.AppException e) { throw e; }
+        catch (Exception e) { throw new Models.AppException("音频文件无法解析：" + e.getMessage(), e); }
     }
 
-    private static final class TrackMetadata {
-        final String mime;
-        final int bitrate;
-        TrackMetadata(String mime, int bitrate) { this.mime = mime; this.bitrate = bitrate; }
+    private static long number(String value) { try { return Long.parseLong(value); } catch (Exception e) { return 0; } }
+    private static double decimal(String value) { try { return Double.parseDouble(value); } catch (Exception e) { return 0; } }
+    // FFmpegKit combines FFprobe JSON and diagnostic logs in getOutput().
+    private static JSONObject probeJson(String output) throws Exception {
+        int start = output.indexOf('{'), end = output.lastIndexOf('}');
+        if (start < 0 || end < start) throw new Models.AppException("音频探测没有有效结果");
+        return new JSONObject(output.substring(start, end + 1));
     }
 }

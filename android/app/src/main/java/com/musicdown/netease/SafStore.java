@@ -39,7 +39,9 @@ final class SafStore {
                         preferences.getString("codec." + key, "音频"),
                         preferences.getBoolean("lossless." + key, false),
                         preferences.getInt("bitrate." + key, 0),
-                        Double.longBitsToDouble(preferences.getLong("duration." + key, Double.doubleToLongBits(0))));
+                        Double.longBitsToDouble(preferences.getLong("duration." + key, Double.doubleToLongBits(0))),
+                        preferences.getInt("sampleRate." + key, 0), preferences.getInt("depth." + key, 0),
+                        preferences.getInt("channels." + key, 0), preferences.getBoolean("decodable." + key, true));
                 return new Models.Result(uri, name, source, info, true);
             }
         } catch (Exception ignored) {
@@ -59,8 +61,7 @@ final class SafStore {
         while (names.contains(fileName)) {
             fileName = stem + " [netease-" + song.id + "-" + index++ + "]." + info.extension;
         }
-        String mime = "mp3".equals(info.extension) ? "audio/mpeg" :
-                ("flac".equals(info.extension) ? "audio/flac" : "audio/mp4");
+        String mime = info.mimeType();
         Uri parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree));
         Uri target = null;
         try {
@@ -80,7 +81,9 @@ final class SafStore {
                     .putString("name." + key, fileName).putString("source." + key, sourceLabel)
                     .putString("ext." + key, info.extension).putString("codec." + key, info.codec)
                     .putBoolean("lossless." + key, info.lossless).putInt("bitrate." + key, info.bitrateKbps)
-                    .putLong("duration." + key, Double.doubleToRawLongBits(info.durationSeconds)).apply();
+                    .putLong("duration." + key, Double.doubleToRawLongBits(info.durationSeconds))
+                    .putInt("sampleRate." + key, info.sampleRateHz).putInt("depth." + key, info.bitDepth)
+                    .putInt("channels." + key, info.channels).putBoolean("decodable." + key, info.decodable).apply();
             return new Models.Result(target, fileName, sourceLabel, info, false);
         } catch (AppException e) {
             if (target != null) {

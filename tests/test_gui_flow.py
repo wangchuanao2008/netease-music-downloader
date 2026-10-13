@@ -81,6 +81,32 @@ class GuiFlowTests(unittest.TestCase):
             window.close()
         del app
 
+    def test_alternate_can_be_selected_when_official_catalog_is_empty(self):
+        app = QApplication.instance() or QApplication([])
+        with TemporaryDirectory() as folder, \
+             patch.dict(os.environ, {"MUSICDOWN_TEST_FOLDER": folder}), \
+             patch("musicdown.gui.DownloadManager", FakeManager), \
+             patch("musicdown.gui.QSettings", FakeSettings):
+            from musicdown.gui import MainWindow
+            window = MainWindow()
+            window._add_task("https://music.163.com/song?id=12345")
+            window._on_qualities(1, set())
+            window._on_preview_ready(1)
+            window.table.setCurrentCell(0, window.COL_TITLE)
+            self.assertFalse(window.quality.model().item(window.quality.findData("auto")).isEnabled())
+            index = window.quality.findData("alternate")
+            self.assertTrue(window.quality.model().item(index).isEnabled())
+            window.quality.setCurrentIndex(index)
+            self.assertFalse(window.manager.downloads)
+            window.download_button.click()
+            self.assertEqual(window.manager.downloads[0][-1], "alternate")
+            window._on_complete(1, "失败", "备用来源暂不可用", None)
+            self.assertEqual(window.tasks[1]["phase"], "ready")
+            window._retry()
+            self.assertEqual(len(window.manager.downloads), 2)
+            window.close()
+        del app
+
 
 if __name__ == "__main__":
     unittest.main()

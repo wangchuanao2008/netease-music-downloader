@@ -6,6 +6,11 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 public class DownloadRulesTest {
+    @Test public void acceptsSpatialOnlyWhenTheActualFormatMatches() {
+        assertEquals("", DownloadRules.qualityFailure("vivid", "vivid", "网易云账号音源", false, "AVS3 Audio Vivid (av3a)"));
+        assertEquals("", DownloadRules.qualityFailure("dolby", "dolby", "网易云账号音源", false, "E-AC-3"));
+        assertTrue(DownloadRules.qualityFailure("dolby", "dolby", "网易云账号音源", false, "AAC").contains("不是杜比"));
+    }
     @Test public void rejectsDowngradesAndThirdPartyForAnExplicitQuality() {
         assertTrue(DownloadRules.qualityFailure("hires", "lossless", "网易云账号音源", true, "FLAC").contains("不一致"));
         assertTrue(DownloadRules.qualityFailure("lossless", "lossless", "备用音源", true, "FLAC").contains("拒绝备用音源"));

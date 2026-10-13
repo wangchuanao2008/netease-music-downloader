@@ -12,8 +12,9 @@ if [[ -z "${ANDROID_HOME:-}" && -d "$HOME/Library/Android/sdk" ]]; then
   export ANDROID_HOME="$HOME/Library/Android/sdk"
 fi
 
-BASELINE_APK="../dist/网易云音乐下载器-Android-v1.0.1.apk"
-OUTPUT_APK="../dist/网易云音乐下载器-Android-v1.1.0.apk"
+BASELINE_APK="${BASELINE_APK:-../dist/网易云音乐下载器-Android-v1.0.1.apk}"
+VERSION="$(tr -d '[:space:]' < ../VERSION)"
+OUTPUT_APK="../dist/netease-music-downloader-android-v${VERSION}.apk"
 APKSIGNER="$ANDROID_HOME/build-tools/36.1.0/apksigner"
 if [[ ! -x "$APKSIGNER" ]]; then
   APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
@@ -28,7 +29,11 @@ if [[ -z "$BASELINE_CERT" ]]; then
   exit 1
 fi
 
-./gradlew --no-daemon clean :app:lint :app:test :app:assembleRelease
+if [[ "${MUSICDOWN_SKIP_TESTS:-0}" == "1" ]]; then
+  ./gradlew --no-daemon :app:assembleRelease
+else
+  ./gradlew --no-daemon clean :app:lint :app:test :app:assembleRelease
+fi
 NEW_APK="app/build/outputs/apk/release/app-release.apk"
 NEW_CERT="$("$APKSIGNER" verify --print-certs "$NEW_APK" | sed -n 's/.*SHA-256 digest: //p' | head -1)"
 if [[ "$NEW_CERT" != "$BASELINE_CERT" ]]; then

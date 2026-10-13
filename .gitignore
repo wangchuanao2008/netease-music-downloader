@@ -5,9 +5,11 @@ dist/
 !音乐下载器.spec
 __pycache__/
 *.pyc
+*.log
 validation-output/
 .DS_Store
 .env
 .env.*
 *.jks
 *.keystore
+windows/wheels/

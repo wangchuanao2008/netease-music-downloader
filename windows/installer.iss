@@ -1,5 +1,7 @@
 #define AppName "网易云音乐下载器"
-#define AppVersion "1.0.0"
+#ifndef AppVersion
+#error Build with build_windows.ps1 so AppVersion comes from VERSION
+#endif
 #define AppExe AppName + ".exe"
 
 [Setup]

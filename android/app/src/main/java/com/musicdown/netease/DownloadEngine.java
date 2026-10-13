@@ -31,12 +31,13 @@ final class DownloadEngine {
 
     private final Context context;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService previews = Executors.newSingleThreadExecutor();
     private final Set<String> active = ConcurrentHashMap.newKeySet();
     DownloadEngine(Context context) { this.context = context.getApplicationContext(); }
 
     Models.Control preview(String url, Listener listener) {
         Models.Control control = new Models.Control();
-        executor.execute(() -> {
+        previews.execute(() -> {
             try {
                 listener.state("解析链接");
                 String finalUrl = MusicApi.resolveShareUrl(url, control);
@@ -61,50 +62,59 @@ final class DownloadEngine {
         return control;
     }
 
-    Models.Control enqueue(Song song, Uri tree, boolean useAlternate, String quality,
-                           Models.Account account, Listener listener) {
+    Models.Control enqueue(Song song, Uri tree, String quality,
+                           Models.Account account, boolean mp3, Bitmap cover, Listener listener) {
         Models.Control control = new Models.Control();
-        executor.execute(() -> run(song, tree, useAlternate, quality, account, control, listener));
+        executor.execute(() -> run(song, tree, quality, account, mp3, cover, control, listener));
         return control;
     }
 
-    void shutdown() { executor.shutdownNow(); }
+    void shutdown() { executor.shutdownNow(); previews.shutdownNow(); }
 
-    private void run(Song song, Uri tree, boolean useAlternate, String quality, Models.Account account,
-                     Models.Control control, Listener listener) {
-        String key = "quality-v1:" + song.id + ":" + quality + ":" + (account == null ? "public" : account.userId) + ":" + tree;
+    private void run(Song song, Uri tree, String quality, Models.Account account,
+                     boolean mp3, Bitmap cover, Models.Control control, Listener listener) {
+        String key = "quality-v3:" + (mp3 ? "mp3:" : "source:") + song.id + ":" + quality + ":" + (account == null ? "public" : account.userId) + ":" + tree;
         try {
             if (!active.add(key)) throw new AppException("同一歌曲、音质和目录已在下载队列中");
             SafStore store = new SafStore(context, tree);
             Result old = store.existing(key, null);
             if (old != null) { listener.completed("已存在", old, old.fileName); return; }
-            List<AudioSource> sources;
-            String primaryFailure = "";
-            if (quality.equals("auto")) {
-                try { listener.state("请求网易云自动音质"); sources = MusicApi.memberSources(song, account, quality, control); }
-                catch (AppException e) {
-                    if (control.cancelled.get()) throw e;
-                    primaryFailure = e.getMessage(); sources = new ArrayList<>();
+            Downloaded downloaded = null;
+            List<String> errors = new ArrayList<>();
+            if (quality.equals("alternate")) {
+                listener.state("查询备用音源");
+                downloaded = downloadAny(song, MusicApi.alternate(song, control), quality, control, listener);
+            } else {
+                try {
+                    listener.state("请求网易云音质");
+                    downloaded = downloadAny(song, MusicApi.memberSources(song, account, quality, control), quality, control, listener);
+                } catch (AppException e) {
+                    if (control.cancelled.get() || !quality.equals("auto")) throw e;
+                    errors.add("网易云音质接口：" + e.getMessage());
                 }
-                if (sources.isEmpty()) {
-                    listener.state("尝试公开音源"); sources.addAll(MusicApi.primary(song));
-                    if (useAlternate) {
-                        try { sources.addAll(MusicApi.alternate(song, control)); }
-                        catch (AppException ignored) { if (sources.isEmpty()) throw ignored; }
+                if (downloaded == null) {
+                    try {
+                        listener.state("尝试公开音源");
+                        downloaded = downloadAny(song, MusicApi.primary(song), quality, control, listener);
+                    } catch (AppException e) {
+                        if (control.cancelled.get()) throw e;
+                        errors.add("公开音源：" + e.getMessage());
+                        errors.add("可单独选择备用音源重试");
                     }
                 }
-            } else {
-                listener.state("请求所选网易云音质");
-                sources = MusicApi.memberSources(song, account, quality, control);
             }
-            listener.state("下载所选音质");
-            Downloaded downloaded = downloadAny(song, sources, quality, control, listener);
+            if (downloaded == null) throw new AppException(String.join("；", errors));
+            File prepared = null;
             try {
+                listener.state(mp3 ? "转换 MP3 和写入标签" : "写入标签和封面");
+                prepared = AudioProcessor.prepare(downloaded.file, downloaded.info, song, cover, mp3, control);
+                AudioInfo finalInfo = AudioInspector.inspect(prepared, control);
                 listener.state("保存文件");
-                Result result = store.save(downloaded.file, song, downloaded.info, downloaded.sourceLabel, key, control);
-                listener.progress(100); listener.completed("已完成", result, result.fileName);
+                Result result = store.save(prepared, song, finalInfo, downloaded.sourceLabel, key, control);
+                listener.progress(100); listener.completed(finalInfo.decodable ? "已完成" : "已保存（未验证解码）", result, result.fileName);
             } finally { //noinspection ResultOfMethodCallIgnored
                 downloaded.file.delete();
+                if (prepared != null && !prepared.equals(downloaded.file)) prepared.delete();
             }
         } catch (AppException e) {
             listener.completed(control.cancelled.get() ? "已取消" : "失败", null, e.getMessage());
@@ -134,7 +144,7 @@ final class DownloadEngine {
                     }
                 }
                 if (!DownloadRules.completeTransfer(total, received)) throw new AppException("传输字节数不完整（" + received + "/" + total + "），临时文件已清理");
-                AudioInfo info = AudioInspector.inspect(temp);
+                AudioInfo info = AudioInspector.inspect(temp, control);
                 if (!DownloadRules.completeDuration(song.durationSeconds, info.durationSeconds))
                     throw new AppException(String.format(java.util.Locale.CHINA, "仅取得试听或截断片段（%.0f/%.0f 秒），未保存", info.durationSeconds, song.durationSeconds));
                 validateSelectedQuality(quality, source, info);

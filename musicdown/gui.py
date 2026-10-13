@@ -16,6 +16,7 @@ from .models import DownloadError
 from .links import extract_urls
 from .quality_catalog import QUALITY_MEMBERSHIP, QUALITY_NAMES, QUALITY_ORDER
 from .worker import DownloadManager
+from .version import VERSION
 
 
 class LoginCheckEvents(QObject):
@@ -43,7 +44,7 @@ class LoginDialog(QDialog):
         self.events.success.connect(self._success)
         self.events.failure.connect(self._failure)
         layout = QVBoxLayout(self)
-        self.state = QLabel("以下为网易云官网 music.163.com。请点击页面中的“用户登录”，扫码或完成官方安全验证。")
+        self.state = QLabel("以下为网易云官网 music.163.com。请直接扫码并完成官方安全验证。")
         self.state.setWordWrap(True)
         layout.addWidget(self.state)
         self.profile = QWebEngineProfile(self)
@@ -51,7 +52,7 @@ class LoginDialog(QDialog):
         self.view = QWebEngineView(self)
         self.view.setPage(QWebEnginePage(self.profile, self.view))
         self.view.loadFinished.connect(self._on_load)
-        self.view.setUrl(QUrl("https://music.163.com/"))
+        self.view.setUrl(QUrl("https://music.163.com/#/login"))
         layout.addWidget(self.view, 1)
         row = QHBoxLayout(); layout.addLayout(row)
         self.verify_button = QPushButton("完成登录后验证")
@@ -76,7 +77,7 @@ class LoginDialog(QDialog):
             QTimer.singleShot(900, self._verify)
 
     def _verify(self):
-        if self.verifying:
+        if self.verifying or self.cancelled.is_set():
             return
         if not self.cookies.get("MUSIC_U"):
             self.state.setText("尚未取得网易云登录会话；请先在网页中完成登录和安全验证")
@@ -124,7 +125,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("网易云音乐下载器")
+        self.setWindowTitle(f"网易云音乐下载器 {VERSION}")
         self.resize(1380, 720)
         self.settings = QSettings("MusicDown", "MusicDown")
         self.manager = DownloadManager()
@@ -150,7 +151,7 @@ class MainWindow(QMainWindow):
     def _setup(self):
         root = QWidget(); self.setCentralWidget(root)
         layout = QVBoxLayout(root); layout.setContentsMargins(22, 20, 22, 18); layout.setSpacing(12)
-        title = QLabel("网易云音乐下载器"); title.setObjectName("title"); layout.addWidget(title)
+        title = QLabel(f"网易云音乐下载器 {VERSION}"); title.setObjectName("title"); layout.addWidget(title)
         subtitle = QLabel("粘贴单曲链接后先解析音质；选择档位并点击下载。支持分享文字与一次粘贴多条链接。")
         subtitle.setObjectName("subtitle"); layout.addWidget(subtitle)
         folder_row = QHBoxLayout(); layout.addLayout(folder_row)
@@ -174,11 +175,6 @@ class MainWindow(QMainWindow):
         self.mp3.setToolTip("转换后文件将是有损 MP3，不再保留母带、无损或空间音频格式。")
         self.mp3.setChecked(self.settings.value("mp3", False, bool)); self.mp3.toggled.connect(lambda v: self.settings.setValue("mp3", v))
         options.addWidget(self.mp3)
-        self.alternate = QCheckBox("原音源不可用时尝试备用来源")
-        self.alternate.setChecked(self.settings.value("alternate", True, bool))
-        self.alternate.toggled.connect(lambda v: self.settings.setValue("alternate", v))
-        self.alternate.setToolTip("仅自动音质模式使用：网易云音质接口和公开音源都不可用时查询 GD Studio。")
-        options.addWidget(self.alternate)
         options.addStretch(1)
         self.notice = QLabel("粘贴后只解析歌曲，不会开始下载")
         options.addWidget(self.notice)
@@ -198,6 +194,7 @@ class MainWindow(QMainWindow):
         self.quality = QComboBox()
         self.quality.addItem("请选择音质", None)
         self.quality.addItem("自动最高可用（普通/母带）", "auto")
+        self.quality.addItem("备用音源（GD Studio · 实际音质以文件为准）", "alternate")
         for level in ("jymaster", "hires", "lossless", "exhigh", "higher", "standard",
                       "jyeffect", "sky", "dolby", "vivid"):
             self.quality.addItem(f"{QUALITY_NAMES[level]} · 通常{QUALITY_MEMBERSHIP[level]}", level)
@@ -216,10 +213,11 @@ class MainWindow(QMainWindow):
         download_row.addWidget(self.download_all_button)
         download_row.addStretch(1)
         actions = QHBoxLayout(); layout.addLayout(actions)
-        for caption, handler in (("取消所选", self._cancel), ("重试所选", self._retry), ("在 Finder 中显示", self._reveal)):
+        for caption, handler in (("取消所选", self._cancel), ("重试所选", self._retry), ("在资源管理器中显示" if sys.platform == "win32" else "在 Finder 中显示", self._reveal)):
             button = QPushButton(caption); button.clicked.connect(handler); actions.addWidget(button)
         actions.addStretch(1)
-        hint = QLabel("目录音质是网易云列出的档位，不保证当前账号有下载权限；选定具体档位后只接受完整且符合该档位的音频。*免费档位也可能遇到会员歌曲。")
+        hint = QLabel("目录音质是网易云列出的档位，不保证当前账号有下载权限；选定具体档位后只接受完整且符合该档位的音频；备用音源单独选择，实际音质以文件检测为准。*免费档位也可能遇到会员歌曲。")
+        hint.setWordWrap(True)
         hint.setObjectName("hint"); layout.addWidget(hint)
         self.setStyleSheet("""
             QWidget { font-size: 13px; } #title { font-size: 26px; font-weight: 700; }
@@ -371,10 +369,10 @@ class MainWindow(QMainWindow):
         task_id = self._selected_id()
         task = self.tasks.get(task_id) if task_id is not None else None
         self.quality.blockSignals(True)
-        can_choose = bool(task and task["phase"] == "ready" and task.get("qualities"))
+        can_choose = bool(task and task["phase"] == "ready" and task.get("qualities") is not None)
         for index in range(1, self.quality.count()):
             level = self.quality.itemData(index)
-            enabled = bool(can_choose and (level == "auto" or level in task["qualities"]))
+            enabled = bool(can_choose and (level == "alternate" or (level == "auto" and bool(task["qualities"])) or level in task["qualities"]))
             self.quality.model().item(index).setEnabled(enabled)
         saved = self.quality.findData(task["quality"] if can_choose else None)
         self.quality.setCurrentIndex(max(0, saved))
@@ -411,9 +409,9 @@ class MainWindow(QMainWindow):
             self.notice.setText("请先选择有效的保存目录")
             return False
         task.update({"phase": "download", "status": "排队下载", "folder": folder,
-                     "mp3": self.mp3.isChecked(), "alternate": self.alternate.isChecked()})
+                     "mp3": self.mp3.isChecked()})
         self.table.item(self.rows[task_id], self.COL_STATUS).setText("排队下载")
-        self.manager.add(task_id, task["url"], folder, task["mp3"], task["alternate"], task["quality"])
+        self.manager.add(task_id, task["url"], folder, task["mp3"], task["quality"])
         self._refresh_quality_choices()
         return True
 
@@ -441,7 +439,7 @@ class MainWindow(QMainWindow):
     def _on_complete(self, task_id, state, detail, audio):
         task = self.tasks[task_id]
         task["status"] = state
-        task["phase"] = "done" if state in ("已完成", "已存在") else "ready" if task.get("qualities") else "preview_error"
+        task["phase"] = "done" if state in ("已完成", "已存在") else "ready" if task.get("qualities") is not None else "preview_error"
         row = self.rows[task_id]
         item = self.table.item(row, self.COL_STATUS)
         source = audio.get("source", "") if audio else ""
@@ -513,7 +511,11 @@ class MainWindow(QMainWindow):
         task_id = self._selected_id()
         if task_id and self.tasks[task_id]["path"]:
             import subprocess
-            subprocess.Popen(["open", "-R", self.tasks[task_id]["path"]])
+            path = str(Path(self.tasks[task_id]["path"]).resolve())
+            if sys.platform == "win32":
+                subprocess.Popen(["explorer.exe", "/select,", path])
+            else:
+                subprocess.Popen(["open", "-R", path])
 
 
 def main():

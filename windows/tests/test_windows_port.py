@@ -13,7 +13,8 @@ class WindowsPortTests(unittest.TestCase):
             ffmpeg = Path(directory) / "ffmpeg.exe"
             ffmpeg.touch()
             with patch("musicdown.audio.shutil.which", return_value=None), \
-                 patch("musicdown.audio.sys.executable", str(executable)):
+                 patch("musicdown.audio.sys.executable", str(executable)), \
+                 patch("musicdown.audio.sys.platform", "win32"):
                 self.assertEqual(find_ffmpeg(), str(ffmpeg.resolve()))
 
 

@@ -20,12 +20,12 @@ final class DownloadRules {
 
     static String qualityFailure(String selected, String actual, String sourceLabel,
                                  boolean lossless, String codec) {
-        if (selected.equals("auto")) return "";
+        if (selected.equals("auto") || selected.equals("alternate")) return "";
         if (!(sourceLabel.startsWith("网易云账号音源") || sourceLabel.startsWith("网易云官方音源")))
             return "指定音质只接受网易云原站音频，已拒绝备用音源";
         if (!selected.equals(actual)) return "所选音质与网易云实际返回档位不一致，未保存";
-        if (selected.equals("vivid") || selected.equals("dolby") || selected.equals("sky"))
-            return "Android MediaExtractor 无法可靠验证该空间音频编码，未标记为已验证成功";
+        if (selected.equals("dolby") && !("AC-3".equals(codec) || "E-AC-3".equals(codec)))
+            return "实际文件不是杜比编码，未按所选音质保存";
         if ((selected.equals("lossless") || selected.equals("hires") || selected.equals("jymaster") || selected.equals("jyeffect")) && !lossless)
             return "网易云返回的文件编码不符合所选无损音质，未保存";
         if (codec == null || codec.isEmpty()) return "无法验证下载文件实际编码，未保存";

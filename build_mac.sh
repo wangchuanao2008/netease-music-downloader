@@ -3,8 +3,7 @@ set -e
 cd "${0:A:h}"
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt 'pyinstaller>=6.18'
-.venv/bin/pyinstaller --noconfirm --clean --windowed --name 音乐下载器 \
-  --osx-bundle-identifier io.github.musicdown.desktop --target-arch arm64 run.py
+.venv/bin/pyinstaller --noconfirm --clean 音乐下载器.spec
 
 # PyInstaller currently treats QtWebEngineCore.framework/Resources as a second
 # framework version. Restore the layout expected by Qt WebEngine on macOS.
@@ -35,3 +34,6 @@ codesign --force --sign - "$framework"
 codesign --force --sign - 'dist/音乐下载器.app'
 codesign --verify --deep --strict 'dist/音乐下载器.app'
 echo "应用位于 dist/音乐下载器.app"
+
+VERSION="$(tr -d '[:space:]' < VERSION)"
+ditto -c -k --sequesterRsrc --keepParent 'dist/音乐下载器.app' "dist/netease-music-downloader-macos-arm64-v${VERSION}.zip"

@@ -55,11 +55,10 @@ class DownloadManager:
         if task_id in self.preview_cancellations:
             self.preview_cancellations[task_id].set()
 
-    def add(self, task_id: int, url: str, folder: str, mp3: bool, alternate: bool = True,
-            quality: str = "auto") -> None:
+    def add(self, task_id: int, url: str, folder: str, mp3: bool, quality: str = "auto") -> None:
         event = threading.Event()
         self.cancellations[task_id] = event
-        self.pending.put((task_id, url, Path(folder), mp3, alternate, quality, event))
+        self.pending.put((task_id, url, Path(folder), mp3, quality, event))
 
     def cancel(self, task_id: int) -> None:
         if task_id in self.cancellations:
@@ -98,8 +97,6 @@ class DownloadManager:
             return
         self.events.info.emit(task_id, song, None)
         levels = fetch_quality_catalog(song_id, client)
-        if not levels:
-            raise DownloadError("网易云未列出这首歌的可选音质")
         if cancelled.is_set():
             return
         self.events.qualities.emit(task_id, levels)
@@ -114,7 +111,7 @@ class DownloadManager:
                    "Referer": "https://music.163.com/"}
         with httpx.Client(headers=headers, follow_redirects=True, timeout=20) as client:
             while True:
-                task_id, url, folder, mp3, alternate, quality, cancelled = self.pending.get()
+                task_id, url, folder, mp3, quality, cancelled = self.pending.get()
                 try:
                     if cancelled.is_set():
                         raise DownloadError("已取消")
@@ -122,8 +119,7 @@ class DownloadManager:
                     platform, song_id, final_url = resolve_link(url, client)
                     cookies = self.account.load()
                     account_id = cookies.get("userId", "guest")
-                    key = f"quality-v2:{platform}:{song_id}:{'mp3' if mp3 else 'source'}:{quality}:{account_id}:" \
-                          f"{'alternate' if alternate else 'direct'}"
+                    key = f"quality-v3:{platform}:{song_id}:{'mp3' if mp3 else 'source'}:{quality}:{account_id}"
                     with self.lock:
                         if key in self.active_keys:
                             raise DownloadError("同一歌曲已在下载队列中")
@@ -148,40 +144,8 @@ class DownloadManager:
                                 pass
                         if cancelled.is_set():
                             raise DownloadError("已取消")
-                        self.events.state.emit(task_id, "查询网易云音质")
-                        errors = []
-                        try:
-                            sources = NeteaseMemberProvider().sources(song, client, cookies, quality)
-                            self.events.state.emit(task_id, "下载中")
-                            path, details = download_audio(song, sources, folder, mp3, client, cancelled,
-                                                           lambda percent: self.events.progress.emit(task_id, percent),
-                                                           lambda state: self.events.state.emit(task_id, state), cover)
-                        except DownloadError as exc:
-                            if cancelled.is_set() or quality != "auto":
-                                raise
-                            errors.append(f"网易云音质接口：{exc}")
-                            try:
-                                sources = provider.sources(song, client)
-                                self.events.state.emit(task_id, "下载公开音源")
-                                path, details = download_audio(song, sources, folder, mp3, client, cancelled,
-                                                               lambda percent: self.events.progress.emit(task_id, percent),
-                                                               lambda state: self.events.state.emit(task_id, state), cover)
-                            except DownloadError as public_exc:
-                                if cancelled.is_set():
-                                    raise
-                                errors.append(f"公开音源：{public_exc}")
-                                if not alternate:
-                                    raise DownloadError("；".join(errors)) from public_exc
-                                self.events.state.emit(task_id, "查找备用音源")
-                                try:
-                                    sources = AlternateProvider().sources(song, client)
-                                    self.events.state.emit(task_id, "下载备用音源")
-                                    path, details = download_audio(song, sources, folder, mp3, client, cancelled,
-                                                                   lambda percent: self.events.progress.emit(task_id, percent),
-                                                                   lambda state: self.events.state.emit(task_id, state), cover)
-                                except DownloadError as alt_exc:
-                                    errors.append(f"备用音源：{alt_exc}")
-                                    raise DownloadError("；".join(errors)) from alt_exc
+                        path, details = self._download_source(task_id, song, provider, client, cookies,
+                                                              quality, folder, mp3, cancelled, cover)
                         self.manifest[key] = {"path": str(path), "source": details.get("source", ""),
                                               "actual_level": details.get("actual_level", "")}
                         self._save_manifest()
@@ -196,3 +160,29 @@ class DownloadManager:
                 finally:
                     self.cancellations.pop(task_id, None)
                     self.pending.task_done()
+
+    def _download_source(self, task_id, song, provider, client, cookies, quality,
+                         folder, mp3, cancelled, cover):
+        def save(sources):
+            self.events.state.emit(task_id, "下载备用音源" if quality == "alternate" else "下载中")
+            return download_audio(song, sources, folder, mp3, client, cancelled,
+                                  lambda percent: self.events.progress.emit(task_id, percent),
+                                  lambda state: self.events.state.emit(task_id, state), cover)
+
+        if cancelled.is_set():
+            raise DownloadError("已取消")
+        if quality == "alternate":
+            self.events.state.emit(task_id, "查询备用音源")
+            # Only the original song ID is sent; account cookies stay in the credential store.
+            return save(AlternateProvider().sources(song, client))
+        self.events.state.emit(task_id, "查询网易云音质")
+        try:
+            return save(NeteaseMemberProvider().sources(song, client, cookies, quality))
+        except DownloadError as exc:
+            if cancelled.is_set() or quality != "auto":
+                raise
+            self.events.state.emit(task_id, "下载公开音源")
+            try:
+                return save(provider.sources(song, client))
+            except DownloadError as public_exc:
+                raise DownloadError(f"网易云音质接口：{exc}；公开音源：{public_exc}；可单独选择备用音源重试") from public_exc

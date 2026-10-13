@@ -1,6 +1,7 @@
-"""NetEase account sessions are validated and stored in the macOS Keychain."""
+"""NetEase account sessions are validated and stored in the operating system credential store."""
 
 import json
+import sys
 
 import httpx
 import keyring
@@ -10,6 +11,7 @@ from .models import DownloadError
 
 SERVICE = "MusicDown.Netease"
 ACCOUNT = "session"
+STORE_NAME = "Windows 凭据管理器" if sys.platform == "win32" else "macOS 钥匙串"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15",
            "Referer": "https://music.163.com/"}
 
@@ -46,7 +48,7 @@ class AccountStore:
         try:
             keyring.set_password(SERVICE, ACCOUNT, json.dumps(payload, ensure_ascii=False))
         except keyring.errors.KeyringError as exc:
-            raise DownloadError(f"无法将登录状态保存到 macOS 钥匙串：{exc}") from exc
+            raise DownloadError(f"无法将登录状态保存到 {STORE_NAME}：{exc}") from exc
 
     def clear(self) -> None:
         try:

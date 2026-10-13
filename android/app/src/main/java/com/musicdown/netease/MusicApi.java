@@ -28,7 +28,6 @@ import java.util.Locale;
 import java.security.MessageDigest;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
-import javax.crypto.spec.SecretKeySpec;
 
 final class MusicApi {
     private static final String USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36";
@@ -148,16 +147,18 @@ final class MusicApi {
                 ? (account == null ? Arrays.asList("exhigh", "higher", "standard") : Arrays.asList(AUTO_LEVELS))
                 : java.util.Collections.singletonList(quality);
         List<String> errors = new ArrayList<>();
-        for (String level : levels) {
+        AudioSource fallback = null;
+        List<AudioSource> dolby = new ArrayList<>();
+        for (String level : levels) for (boolean effect : level.equals("dolby") ? new boolean[]{false, true} : new boolean[]{false}) {
             checkCancelled(control);
             try {
-                JSONObject item = playerItem(song.id, level, account, control);
+                JSONObject item = playerItem(song.id, level, account, control, effect);
                 JSONObject trial = item.optJSONObject("freeTimeTrialPrivilege");
-                if (DownloadRules.isTrial(item.has("freeTrialInfo"), item.has("trialInfo"), trial == null ? 0 : trial.optInt("type"))) {
+                if (DownloadRules.isTrial(present(item.opt("freeTrialInfo")), present(item.opt("trialInfo")), trial == null ? 0 : trial.optInt("type"))) {
                     errors.add("网易云仅返回试听片段"); continue;
                 }
                 String url = item.optString("url", "");
-                String actual = item.optString("level", "");
+                String actual = effect ? "dolby" : item.optString("level", "");
                 if (!isNeteaseAudio(url)) { errors.add("网易云没有返回可用的原站音频地址"); continue; }
                 if (!quality.equals("auto") && !level.equals(actual)) {
                     errors.add("请求" + qualityName(level) + "，网易云实际只提供" + qualityName(actual)); continue;
@@ -166,22 +167,31 @@ final class MusicApi {
                     errors.add("网易云返回了不在自动音质范围内的档位：" + actual); continue;
                 }
                 String label = account == null ? "网易云官方音源 · " : "网易云账号音源 · ";
-                return java.util.Collections.singletonList(new AudioSource(url, label + qualityName(actual), level, actual,
-                        Arrays.asList("lossless", "hires", "jymaster", "jyeffect").contains(actual)));
-            } catch (AppException e) { errors.add(e.getMessage()); }
+                AudioSource source = new AudioSource(url, label + qualityName(actual), level, actual,
+                        Arrays.asList("lossless", "hires", "jymaster", "jyeffect").contains(actual));
+                if (level.equals("dolby")) {
+                    if (!dolby.stream().anyMatch(candidate -> candidate.url.equals(url))) dolby.add(source);
+                } else if (!quality.equals("auto") || actual.equals(level)) return java.util.Collections.singletonList(source);
+                else if (fallback == null || Arrays.asList(AUTO_LEVELS).indexOf(actual) < Arrays.asList(AUTO_LEVELS).indexOf(fallback.actualLevel)) fallback = source;
+            } catch (AppException e) { if (control.cancelled.get()) throw e; errors.add(e.getMessage()); }
         }
+        if (!dolby.isEmpty()) return dolby;
+        if (fallback != null) return java.util.Collections.singletonList(fallback);
         throw new AppException(errors.isEmpty() ? "网易云没有返回可用音频" : String.join("；", errors));
     }
 
+    private static boolean present(Object value) { return value != null && value != JSONObject.NULL && !Boolean.FALSE.equals(value); }
+
     @SuppressLint("GetInstance")
-    private static JSONObject playerItem(String id, String level, Models.Account account, Models.Control control) throws AppException {
+    private static JSONObject playerItem(String id, String level, Models.Account account, Models.Control control, boolean dolbyEffect) throws AppException {
         try {
             JSONObject header = new JSONObject();
             header.put("os", "pc"); header.put("appver", "8.0.0");
             header.put("requestId", System.currentTimeMillis() + "_" + (int)(Math.random() * 10000));
             if (account != null) { header.put("MUSIC_U", account.musicU); header.put("__csrf", account.csrf); }
-            JSONObject payload = new JSONObject(); payload.put("ids", "[" + id + "]"); payload.put("level", level);
+            JSONObject payload = new JSONObject(); payload.put("ids", "[" + id + "]"); payload.put("level", dolbyEffect ? "hires" : level);
             payload.put("encodeType", level.equals("dolby") ? "mp4" : "flac"); payload.put("header", header);
+            if (dolbyEffect) payload.put("effect", "dolby");
             if (level.equals("sky")) payload.put("immerseType", "c51");
             String raw = payload.toString();
             String digest = md5(("nobody" + EAPI_PATH + "use" + raw + "md5forencrypt").getBytes(StandardCharsets.UTF_8));

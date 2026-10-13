@@ -56,7 +56,8 @@ public final class MainActivity extends Activity {
     private TextView folderLabel;
     private TextView notice;
     private LinearLayout taskList;
-    private CheckBox alternate;
+    private CheckBox mp3;
+    private final List<TaskRow> rows = new ArrayList<>();
     private Uri folderUri;
     private boolean clearing;
     private boolean folderPickerOpen;
@@ -114,12 +115,27 @@ public final class MainActivity extends Activity {
     private void buildUi() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        // Android 15 enforces edge-to-edge for targetSdk 35. Keep system bars and cutouts
+        // outside the scrollable content so the heading stays clear even after scrolling.
+        scroll.setOnApplyWindowInsetsListener((view, insets) -> {
+            int left, top, right, bottom;
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets safe = insets.getInsets(android.view.WindowInsets.Type.systemBars()
+                        | android.view.WindowInsets.Type.displayCutout() | android.view.WindowInsets.Type.ime());
+                left = safe.left; top = safe.top; right = safe.right; bottom = safe.bottom;
+            } else {
+                left = insets.getSystemWindowInsetLeft(); top = insets.getSystemWindowInsetTop();
+                right = insets.getSystemWindowInsetRight(); bottom = insets.getSystemWindowInsetBottom();
+            }
+            view.setPadding(left, top, right, bottom);
+            return insets.consumeSystemWindowInsets();
+        });
         LinearLayout root = vertical();
         root.setPadding(dp(18), dp(18), dp(18), dp(28));
         root.setBackgroundColor(Color.rgb(247, 249, 252));
         scroll.addView(root, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView title = text("网易云音乐下载器", 26, Color.rgb(29, 35, 45));
+        TextView title = text("网易云音乐下载器 " + BuildConfig.VERSION_NAME, 26, Color.rgb(29, 35, 45));
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         root.addView(title);
         TextView subtitle = text("粘贴网易云单曲链接或整段分享文字，支持一次粘贴多条。", 14, Color.rgb(102, 110, 124));
@@ -164,16 +180,17 @@ public final class MainActivity extends Activity {
         });
 
         LinearLayout optionRow = horizontal();
-        alternate = new CheckBox(this);
-        alternate.setText("自动音质失败时允许尝试备用来源");
-        alternate.setTextSize(14);
-        alternate.setChecked(settings.getBoolean("alternate", true));
-        alternate.setOnCheckedChangeListener((button, checked) -> settings.edit().putBoolean("alternate", checked).apply());
-        optionRow.addView(alternate, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         Button add = button("解析歌曲");
         add.setOnClickListener(v -> enqueueInput());
         optionRow.addView(add);
         root.addView(optionRow);
+        mp3 = new CheckBox(this); mp3.setText("转换为 MP3（转换后为有损音频）");
+        mp3.setChecked(settings.getBoolean("mp3", false));
+        mp3.setOnCheckedChangeListener((button, checked) -> settings.edit().putBoolean("mp3", checked).apply());
+        root.addView(mp3);
+        Button all = button("下载全部已选音质");
+        all.setOnClickListener(v -> { for (TaskRow row : rows) if (row.download.isEnabled()) row.startDownload(); });
+        root.addView(all);
 
         notice = text("解析只查询信息、封面和音质目录；选择音质并点击下载后才开始", 13, Color.rgb(102, 110, 124));
         root.addView(notice, margins(-1, -2, 0, 5, 0, 12));
@@ -184,6 +201,7 @@ public final class MainActivity extends Activity {
         taskList = vertical();
         root.addView(taskList, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         setContentView(scroll);
+        scroll.requestApplyInsets();
     }
 
     private void chooseFolder() {
@@ -211,6 +229,7 @@ public final class MainActivity extends Activity {
 
     private void addTask(String url) {
         TaskRow row = new TaskRow(url);
+        rows.add(row);
         taskList.addView(row.root, 0, margins(-1, -2, 0, 5, 0, 8));
         row.preview();
     }
@@ -244,14 +263,29 @@ public final class MainActivity extends Activity {
 
     private void openLogin() {
         LinearLayout panel = vertical(); panel.setPadding(dp(12), dp(8), dp(12), 0);
-        TextView hint = text("请在网易云官方网页完成登录、扫码和安全验证。应用不会要求输入密码。", 14, Color.rgb(75, 82, 96));
+        TextView hint = text("已直接打开网易云官方登录页，请扫码并完成安全验证。", 14, Color.rgb(75, 82, 96));
         panel.addView(hint);
         WebView web = new WebView(this);
         WebSettings settingsWeb = web.getSettings();
         // JavaScript is required by NetEase's official login and security-verification pages.
         settingsWeb.setJavaScriptEnabled(true); settingsWeb.setDomStorageEnabled(true);
+        // Request the dedicated desktop login route: the default Android UA is redirected
+        // by NetEase to its mobile homepage. Adapt only the login layout below.
+        settingsWeb.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+        settingsWeb.setUseWideViewPort(true); settingsWeb.setLoadWithOverviewMode(true);
+        settingsWeb.setBuiltInZoomControls(true); settingsWeb.setDisplayZoomControls(false);
         settingsWeb.setAllowFileAccess(false); settingsWeb.setAllowContentAccess(false);
         web.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView view, String address) {
+                Uri page = Uri.parse(address);
+                if (!"music.163.com".equals(page.getHost())) return;
+                if (!"/login".equals(page.getPath()) && !"/login".equals(page.getFragment())) return;
+                try (java.io.InputStream script = getAssets().open("login_layout.js")) {
+                    view.evaluateJavascript(readLoginLayout(script), null);
+                } catch (java.io.IOException e) {
+                    hint.setText("登录布局加载失败；可双指缩放网页后扫码");
+                }
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView view, android.webkit.WebResourceRequest request) {
                 Uri uri = request.getUrl(); String host = uri.getHost();
                 return !"https".equalsIgnoreCase(uri.getScheme()) || host == null ||
@@ -264,10 +298,11 @@ public final class MainActivity extends Activity {
             }
         });
         CookieManager.getInstance().setAcceptCookie(true);
-        web.loadUrl("https://music.163.com/"); panel.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(430)));
+        web.loadUrl("https://music.163.com/#/login"); panel.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(Math.max(200, getResources().getConfiguration().screenHeightDp - 180)), 1));
         AlertDialog dialog = new AlertDialog.Builder(this).setTitle("网易云官网登录")
                 .setView(panel).setNegativeButton("关闭", (d, w) -> {
-                    CookieManager.getInstance().removeAllCookies(null); web.destroy();
+                    CookieManager.getInstance().removeAllCookies(null);
                 })
                 .setPositiveButton("完成登录并校验", null).create();
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
@@ -284,18 +319,29 @@ public final class MainActivity extends Activity {
                     ui(() -> {
                         account = validated; updateAccountUi();
                         Toast.makeText(this, "已登录：" + validated.nickname, Toast.LENGTH_LONG).show();
-                        web.destroy(); dialog.dismiss();
+                        dialog.dismiss();
                     });
                 } catch (Models.AppException e) {
-                    CookieManager.getInstance().removeAllCookies(null);
                     ui(() -> { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true); Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show(); });
                 } catch (Exception e) {
-                    CookieManager.getInstance().removeAllCookies(null);
                     ui(() -> { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true); Toast.makeText(this, "无法安全保存登录会话", Toast.LENGTH_LONG).show(); });
                 } finally { worker.shutdown(); }
             });
         }));
+        dialog.setOnDismissListener(ignored -> {
+            CookieManager.getInstance().removeAllCookies(null);
+            web.stopLoading(); web.destroy();
+        });
         dialog.show();
+        if (dialog.getWindow() != null) dialog.getWindow().setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+    }
+
+    private static String readLoginLayout(java.io.InputStream script) throws java.io.IOException {
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        byte[] chunk = new byte[4096]; int count;
+        while ((count = script.read(chunk)) != -1) buffer.write(chunk, 0, count);
+        return buffer.toString("UTF-8");
     }
 
     private static String cookieValue(String header, String key) {
@@ -329,6 +375,8 @@ public final class MainActivity extends Activity {
         Models.Control control;
         Models.Result result;
         Models.Song song;
+        android.graphics.Bitmap coverBitmap;
+        boolean downloading;
         List<String> selectedLevels = new ArrayList<>();
 
         TaskRow(String url) {
@@ -363,7 +411,7 @@ public final class MainActivity extends Activity {
                 state.setText("正在取消…");
                 cancel.setEnabled(false);
             });
-            retry.setOnClickListener(v -> { if (song == null || song.qualities.isEmpty()) preview(); else startDownload(); });
+            retry.setOnClickListener(v -> { if (song == null) preview(); else startDownload(); });
             download.setOnClickListener(v -> startDownload());
             open.setOnClickListener(v -> openResult());
             actions.addView(cancel);
@@ -385,7 +433,7 @@ public final class MainActivity extends Activity {
                     ui(() -> {
                         songTitle.setText(song.title);
                         meta.setText(song.artist + (song.album.trim().isEmpty() ? "" : " · " + song.album));
-                        if (bitmap != null) cover.setImageBitmap(bitmap);
+                        if (bitmap != null) { coverBitmap = bitmap; cover.setImageBitmap(bitmap); }
                     });
                 }
                 @Override public void catalog(Models.Song ready, android.graphics.Bitmap bitmap, boolean failed) {
@@ -393,14 +441,15 @@ public final class MainActivity extends Activity {
                         if (ready == null) { cancel.setEnabled(false); retry.setText("重试目录"); retry.setEnabled(true); quality.setText("音质目录获取失败"); return; }
                         song = ready; selectedLevels.clear();
                         List<String> labels = new ArrayList<>(); labels.add("选择音质…"); selectedLevels.add("");
-                        labels.add("自动（普通音质优先）"); selectedLevels.add("auto");
+                        if (!ready.qualities.isEmpty()) { labels.add("自动（普通音质优先）"); selectedLevels.add("auto"); }
+                        labels.add("备用音源（GD Studio · 实际音质以文件为准）"); selectedLevels.add("alternate");
                         for (String level : MusicApi.QUALITY_ORDER) if (ready.qualities.containsKey(level)) {
                             labels.add(ready.qualities.get(level)); selectedLevels.add(level);
                         }
                         qualityPicker.setAdapter(new ArrayAdapter<>(MainActivity.this, android.R.layout.simple_spinner_dropdown_item, labels));
                         qualityPicker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
                             @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                                download.setEnabled(song != null && position > 0);
+                                download.setEnabled(song != null && position > 0 && !downloading && result == null);
                             }
                             @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { download.setEnabled(false); }
                         });
@@ -422,12 +471,12 @@ public final class MainActivity extends Activity {
         }
 
         private void startDownload() {
-            if (song == null || qualityPicker.getSelectedItemPosition() <= 0) return;
+            if (downloading || song == null || qualityPicker.getSelectedItemPosition() <= 0) return;
             if (folderUri == null) { notice.setText("下载前请先选择保存目录"); chooseFolder(); return; }
             String level = selectedLevels.get(qualityPicker.getSelectedItemPosition());
-            result = null; download.setEnabled(false); retry.setEnabled(false); cancel.setEnabled(true); open.setEnabled(false);
-            state.setText("已选择 " + (level.equals("auto") ? "自动音质" : song.qualities.get(level)) + "；开始下载");
-            control = engine.enqueue(song, folderUri, alternate.isChecked(), level, account, new DownloadEngine.Listener() {
+            downloading = true; qualityPicker.setEnabled(false); result = null; download.setEnabled(false); retry.setEnabled(false); cancel.setEnabled(true); open.setEnabled(false);
+            state.setText("已选择 " + (level.equals("auto") ? "自动音质" : level.equals("alternate") ? "备用音源" : song.qualities.get(level)) + "；开始下载");
+            control = engine.enqueue(song, folderUri, level, account, mp3.isChecked(), coverBitmap, new DownloadEngine.Listener() {
                 @Override public void state(String text) { ui(() -> state.setText(text)); }
                 @Override public void song(Models.Song ignored, android.graphics.Bitmap bitmap) {}
                 @Override public void catalog(Models.Song ignored, android.graphics.Bitmap bitmap, boolean failed) {}
@@ -437,7 +486,7 @@ public final class MainActivity extends Activity {
         }
 
         private void finish(String finalState, Models.Result finalResult, String message) {
-            result = finalResult;
+            result = finalResult; downloading = false; qualityPicker.setEnabled(true);
             progress.setIndeterminate(false);
             cancel.setEnabled(false);
             boolean success = finalResult != null;
@@ -458,8 +507,7 @@ public final class MainActivity extends Activity {
 
         private void openResult() {
             if (result == null) return;
-            String mime = "mp3".equals(result.info.extension) ? "audio/mpeg" :
-                    ("flac".equals(result.info.extension) ? "audio/flac" : "audio/mp4");
+            String mime = result.info.mimeType();
             Intent view = new Intent(Intent.ACTION_VIEW).setDataAndType(result.uri, mime)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             try {

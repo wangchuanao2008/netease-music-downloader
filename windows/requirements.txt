@@ -1,3 +1,1 @@
-PySide6_Essentials==6.11.2
-httpx==0.28.1
-mutagen==1.47.0
+-r ../requirements.txt

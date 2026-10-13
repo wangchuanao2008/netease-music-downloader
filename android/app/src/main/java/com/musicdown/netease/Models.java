@@ -77,9 +77,20 @@ final class Models {
         final boolean lossless;
         final int bitrateKbps;
         final double durationSeconds;
+        final int sampleRateHz;
+        final int bitDepth;
+        final int channels;
+        final boolean decodable;
 
         AudioInfo(String extension, String codec, boolean lossless,
                   int bitrateKbps, double durationSeconds) {
+            this(extension, codec, lossless, bitrateKbps, durationSeconds, 0, 0, 0, true);
+        }
+
+        AudioInfo(String extension, String codec, boolean lossless, int bitrateKbps, double durationSeconds,
+                  int sampleRateHz, int bitDepth, int channels, boolean decodable) {
+            this.sampleRateHz = sampleRateHz; this.bitDepth = bitDepth;
+            this.channels = channels; this.decodable = decodable;
             this.extension = extension;
             this.codec = codec;
             this.lossless = lossless;
@@ -89,7 +100,23 @@ final class Models {
 
         String display() {
             String rate = bitrateKbps > 0 ? bitrateKbps + " kbps" : "码率未知";
-            return codec + " · " + rate + (lossless ? " · 无损" : "");
+            return codec + " · " + rate + (lossless ? " · 无损" : "")
+                    + (sampleRateHz > 0 ? " · " + sampleRateHz + " Hz" : "")
+                    + (bitDepth > 0 ? " / " + bitDepth + " bit" : "")
+                    + (channels > 0 ? " · " + channels + " 声道" : "")
+                    + (!decodable ? " · 未验证解码" : "");
+        }
+
+        String mimeType() {
+            switch (extension) {
+                case "mp3": return "audio/mpeg";
+                case "flac": return "audio/flac";
+                case "aac": return "audio/aac";
+                case "ac3": return "audio/ac3";
+                case "eac3": return "audio/eac3";
+                case "ogg": return "audio/ogg";
+                default: return "audio/mp4";
+            }
         }
     }
 

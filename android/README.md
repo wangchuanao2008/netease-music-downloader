@@ -1,29 +1,28 @@
-# 网易云音乐下载器 · Android 版
+# 网易云音乐下载器 · Android 1.2.1
 
-当前 APK：[`../dist/网易云音乐下载器-Android-v1.1.0.apk`](https://github.com/wangchuanao2008/netease-music-downloader/releases/download/v1.1.0/netease-music-downloader-android-v1.1.0.apk)，包名 `com.musicdown.netease`，`versionCode 3`，最低 Android 8.0（API 26），目标 Android 15（API 35）。应用只申请联网权限；保存通过 Android 系统文件夹选择器完成。
+[历史发布的 APK](https://github.com/wangchuanao2008/netease-music-downloader/releases)。包名 `com.musicdown.netease`，versionName 来自根目录 VERSION，versionCode 为 `major*10000+minor*100+patch`，当前 10201。最低 Android 8.0（API 26），目标 API 35。音频库支持 arm64-v8a 与 x86_64。
 
-## 使用方式
+粘贴/分享网易云单曲链接、短链或多条分享文字。先解析歌曲、封面和音质目录，再选择音质并下载，可点击“下载全部已选音质”。点击登录直接进入官方登录页，页面适配窄屏；扫码及安全验证后校验并保存会话，使用 Android Keystore AES-GCM 加密；应用数据不参与云备份。保存使用系统文件夹选择器，不申请广泛存储权限。
 
-粘贴或分享网易云单曲链接、`163cn.tv` 短链或包含多条链接的文字。应用获取歌曲信息、封面和该曲音质目录，显示可选档位及通常会员等级；这一阶段进度保持 0，不开始下载。目录失败可点“重试目录”。为单曲选定音质并点“下载”后才会请求音频。会员音质可在“官网登录”中打开网易云官方网页完成扫码及安全验证，应用校验账号后保存会话；不会要求在本应用输入密码。会话使用 Android Keystore 的 AES-GCM 密钥加密，退出时可删除；Android 云备份和设备迁移备份均排除了应用数据。
+与桌面版一致地支持账号音质、指定档位拒绝降级、试听/传输截断校验、网易云公开来源回退和独立备用音源、取消/重试及重复下载记录。从 1.2.0 开始内置 FFmpeg/FFprobe，检测真实编码、采样率、位深、声道数；支持 MP3 转换以及 MP3/FLAC/M4A 的歌曲、歌手、专辑和封面标签。MP4 仅修改元数据并调整分块偏移，不改变媒体数据，支持无法解码的 AV3A 原样保留。
 
-具体音质只请求网易云原站接口，检查接口实际档位、音频编码和时长；发生降级、试听或明显截断时不会保存为成功，也不会以第三方音源补低音质。只有“自动”档位允许尝试公开来源及用户启用的 GD Studio 备用来源。重复记录按歌曲、音质、账号和保存目录区分。失败与取消会清理临时文件；重试会重新请求。保存目录授权失效时会要求重新选择。
+杜比请求仅接受 AC-3/E-AC-3，不证明带有 Atmos 元数据。AV3A 检查容器时长和音频包完整性并显示“未验证解码”，不能转换为 MP3。其他格式转 MP3 后为有损音频，不能保留空间混音属性。后台下载受系统进程管理影响，进程结束后需要重新打开并重试。
 
-Android `MediaExtractor` 无法可靠确认某些空间音频的编码和元数据，因此杜比、沉浸环绕声和臻音全景声会明确提示当前无法验证，不会被标为成功。Android 默认保留文件编码，不提供 MP3 转换或重写标签。下载在应用进程内执行：后台时通常可以继续，但系统结束进程后任务不会自动恢复，需要重新打开并重试。
+界面按系统状态栏、导航栏、刘海和键盘的实际 inset 留出空间，避免顶部标题与状态栏重叠。备用音源在音质菜单中与官方档位并列，选择后直接查询 GD Studio，不携带网易云登录会话，也不承诺固定音质。
 
-## 构建
+## 构建和验证
 
-项目固定使用 Java 17、Android Gradle Plugin 8.5.2、Gradle 8.7、compile/target SDK 35。安装 Android Studio 与 Android SDK 35 后运行：
+Java 17、AGP 8.5.2、Gradle 8.7、Android SDK 35：
 
 ```sh
 cd android
 ./build_android.sh
+# 连接 arm64/x86_64 Android 设备或启动模拟器后运行原生音频测试：
+./gradlew :app:connectedDebugAndroidTest
 ```
 
-脚本执行干净构建、Lint、单元测试和 Release 打包；打包前后比较现有 1.0.1 基线 APK 与新包的证书 SHA-256，不一致时拒绝交付，以保护覆盖安装。输出为 `dist/网易云音乐下载器-Android-v1.1.0.apk`。项目目前使用 Android Debug 签名，仅适合侧载/升级同一开发证书构建的版本，不是商店发布证书。
+输出 `../dist/netease-music-downloader-android-v1.2.1.apk`。脚本执行 clean、lint、单元测试和 Release 构建，检查与本地旧 APK 相同的签名，保护覆盖安装。无基线时可设置 BASELINE_APK 为已有同证书安装包。当前使用开发证书侧载签名，证书 SHA-256：`acc56f5c827230bf24a783e215919cb09db65c75c32d5816bd0139af3f0ef781`。
 
-## 1.1.0 构建记录（2026-09-28）
+新增原生测试覆盖 FLAC 封面标签、MP3 转换、MP4 元数据及媒体字节保留、E-AC-3 检测、AV3A 合成容器和截断拒绝。验证范围见 [发布记录](../docs/release-1.2.1.md)。音频库、许可与对应源代码位置见 [第三方说明](../docs/third-party-audio.md)。
 
-- 现有基线 APK：包名 `com.musicdown.netease`，版本 `1.0.1` / `versionCode 2`；签名证书 SHA-256：`acc56f5c827230bf24a783e215919cb09db65c75c32d5816bd0139af3f0ef781`。
-- 新 APK：版本 `1.1.0` / `versionCode 3`；证书 SHA-256 与基线完全一致。APK SHA-256：`c94d04bc5fd75b2d5483635b2ba26d92a2b69ed7d6d66b2fd2b61aed88a60e57`。`apksigner` 使用 APK Signature Scheme v2 验证通过。
-- 固定 Gradle 8.7 执行 `clean`、`:app:lint`、`:app:test` 和 `:app:assembleRelease` 成功；单元测试 8 项通过，Lint 0 errors（10 warnings）。测试覆盖音质目录、会员标签、空间音频目录变体、账号资料校验、指定音质降级拒绝、试听标记、传输字节数、短时长文件判断和取消后重试。
-- 尚未完成真机/模拟器安装、官网登录、系统分享、免费/会员音质及 SAF 保存验收。ADB 设备列表为空，SDK 没有已安装的模拟器系统镜像，且此环境没有 `sdkmanager`。因而本 APK 虽已构建及签名核验，仍不能视为完成了用户验收要求中的设备验证。
+本次按用户要求使用 `MUSICDOWN_SKIP_TESTS=1 ./build_android.sh` 仅构建，未进行 Android 验收、JVM 单元测试或原生音频设备测试。
